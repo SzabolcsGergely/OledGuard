@@ -15,9 +15,10 @@ While the TV is an active display:
 - **Auto-hides the taskbar** (the most common burn-in spot).
 - **Makes the desktop background plain black.** The picture is switched off, not replaced, so a
   slideshow / Spotlight / picture comes back exactly as it was.
+- **Hides the desktop icons** (the same as desktop right-click > View > Show desktop icons).
 
-When the TV goes away (unplugged, switched off, `Win+P`), or the guard exits, taskbar and
-background go back to your own settings within 2 s. The originals are saved in
+When the TV goes away (unplugged, switched off, `Win+P`), or the guard exits, taskbar,
+background and icons go back to your own settings within 2 s. The originals are saved in
 `%LOCALAPPDATA%\OledGuard\` first, so a crash or kill is recovered on the next start (or with
 `-Restore`).
 
@@ -53,15 +54,16 @@ removes the task, restores taskbar and background).
 | `-AudioThreshold <0..1>` | `0.001` | Peak level that counts as sound. |
 | `-KeepTaskbar` | off | Don't touch the taskbar. |
 | `-KeepWallpaper` | off | Don't touch the background. |
-| `-Status` | | Print displays, taskbar / background state, idle time, controllers, audio; then exit. |
-| `-Restore` | | Put taskbar and background back; then exit. |
+| `-KeepIcons` | off | Don't touch the desktop icons. |
+| `-Status` | | Print displays, taskbar / background / icon state, idle time, controllers, audio; then exit. |
+| `-Restore` | | Put taskbar, background and icons back; then exit. |
 
 ## Limits
 
 - An exclusive-fullscreen game can draw over the black cover (you'd be holding the controller
   anyway).
 - If the TV mirrors another monitor, that monitor is blanked too.
-- Taskbar auto-hide and the background are Windows-wide settings, so they also change on a second
-  monitor while the TV is active.
+- Taskbar auto-hide, the background and the desktop icons are Windows-wide settings, so they also
+  change on a second monitor while the TV is active.
 - Turn the TV off with its remote, not at the wall: OLED TVs run their pixel compensation in
   standby.

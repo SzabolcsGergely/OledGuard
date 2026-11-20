@@ -10,8 +10,9 @@
     - an XInput game controller (Xbox pads; PlayStation pads only through Steam Input / DS4Windows)
     - sound on the default playback device (so a playing movie isn't blanked), unless -IgnoreAudio
   Only displays whose monitor id contains one of -Match are covered; the others stay untouched.
-  While the TV is active the taskbar auto-hides and the desktop background is plain black; when the
-  TV goes away, or the guard exits, both go back to what they were (also after a crash: the
+  While the TV is active the taskbar auto-hides, the desktop background is plain black and the
+  desktop icons are hidden; when the TV goes away, or the guard exits, all three go back to what
+  they were (also after a crash: the
   originals are saved in %LOCALAPPDATA%\OledGuard until restored).
   Black on OLED means the pixels are off, which is as good as the panel being off.
 
@@ -19,7 +20,7 @@
   .\oled-guard.ps1                    # run with a tray icon
   .\oled-guard.ps1 -IdleMinutes 5
   .\oled-guard.ps1 -Status            # print what it detects and exit
-  .\oled-guard.ps1 -Restore           # put taskbar and background back and exit
+  .\oled-guard.ps1 -Restore           # put taskbar, background and icons back and exit
 #>
 param(
     # Substrings of the monitor device id (EDID manufacturer + product code). S95F = SAM78B4.
@@ -33,8 +34,10 @@ param(
     [switch]$KeepTaskbar,
     # Leave the desktop background alone (by default it is plain black while the TV is active).
     [switch]$KeepWallpaper,
+    # Leave the desktop icons alone (by default they are hidden while the TV is active).
+    [switch]$KeepIcons,
     [switch]$Status,
-    # Put taskbar and background back (if a guard changed them and didn't get to) and exit.
+    # Put taskbar, background and icons back (if a guard changed them and didn't get to) and exit.
     [switch]$Restore
 )
 
@@ -161,6 +164,38 @@ namespace OledGuard {
             d.hWnd = FindWindow("Shell_TrayWnd", null);
             d.lParam = (IntPtr)(on ? 1 : 2);                                  // ABS_AUTOHIDE : ABS_ALWAYSONTOP
             SHAppBarMessage(10, ref d);                                       // ABM_SETSTATE
+        }
+
+        // --- desktop icons ------------------------------------------------------------------
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
+        [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+        [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+
+        // The desktop's folder view: under Progman, or under a WorkerW once a slideshow / wallpaper
+        // animation has run.
+        static IntPtr DesktopView() {
+            IntPtr dv = FindWindowEx(FindWindow("Progman", null), IntPtr.Zero, "SHELLDLL_DefView", null);
+            IntPtr w = IntPtr.Zero;
+            while (dv == IntPtr.Zero && (w = FindWindowEx(IntPtr.Zero, w, "WorkerW", null)) != IntPtr.Zero)
+                dv = FindWindowEx(w, IntPtr.Zero, "SHELLDLL_DefView", null);
+            return dv;
+        }
+
+        // 1 = shown, 0 = hidden, -1 = no desktop (Explorer not running).
+        public static int DesktopIconsShown() {
+            IntPtr dv = DesktopView();
+            if (dv == IntPtr.Zero) return -1;
+            IntPtr lv = FindWindowEx(dv, IntPtr.Zero, "SysListView32", null);
+            if (lv == IntPtr.Zero) return -1;
+            return IsWindowVisible(lv) ? 1 : 0;
+        }
+
+        // Same as right-click desktop > View > Show desktop icons (a toggle; Explorer saves it).
+        public static void SetDesktopIcons(bool show) {
+            int now = DesktopIconsShown();
+            if (now < 0 || (now == 1) == show) return;
+            SendMessage(DesktopView(), 0x0111, (IntPtr)0x7402, IntPtr.Zero);   // WM_COMMAND
         }
 
         [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
@@ -301,9 +336,28 @@ function Set-WallpaperForTv([bool]$tvActive) {
     }
 }
 
+# And the desktop icons: "True" when they were shown before the guard hid them.
+$IconsMarker = Join-Path $env:LOCALAPPDATA 'OledGuard\icons-original.txt'
+
+function Set-IconsForTv([bool]$tvActive) {
+    $shown = [OledGuard.Native]::DesktopIconsShown()
+    if ($shown -lt 0) { return }    # Explorer restarting: try again on the next check
+    if ($tvActive -and -not $KeepIcons) {
+        if (-not (Test-Path $IconsMarker)) {
+            New-Item -ItemType Directory -Force (Split-Path $IconsMarker) | Out-Null
+            Set-Content -Path $IconsMarker -Value ($shown -eq 1)
+        }
+        if ($shown -eq 1) { [OledGuard.Native]::SetDesktopIcons($false) }
+    } elseif (Test-Path $IconsMarker) {
+        [OledGuard.Native]::SetDesktopIcons((Get-Content $IconsMarker -ErrorAction SilentlyContinue) -eq 'True')
+        Remove-Item $IconsMarker -Force
+    }
+}
+
 function Set-TvDesktop([bool]$tvActive) {
     try { Set-TaskbarForTv $tvActive } catch {}
     try { Set-WallpaperForTv $tvActive } catch {}
+    try { Set-IconsForTv $tvActive } catch {}
 }
 
 function Get-TvScreens {
@@ -333,6 +387,8 @@ if ($Status) {
     if (Test-Path $TaskbarMarker) { "                  (OLED Guard hid it; your own setting was: {0})" -f (Get-Content $TaskbarMarker) }
     "Background:       picture {0}, color 0x{1:X6}" -f $(if ([OledGuard.Wallpaper]::PictureOn()) { 'on' } else { 'off' }), [OledGuard.Wallpaper]::Color()
     if (Test-Path $WallpaperMarker) { "                  (OLED Guard blacked it; saved: {0})" -f (Get-Content $WallpaperMarker) }
+    "Desktop icons:    {0}" -f @('hidden', 'shown', 'unknown (no desktop)')[[OledGuard.Native]::DesktopIconsShown() -replace '-1', '2']
+    if (Test-Path $IconsMarker) { "                  (OLED Guard hid them; shown before: {0})" -f (Get-Content $IconsMarker) }
     "Input idle:       {0:N1} s" -f ([OledGuard.Native]::InputIdleMs() / 1000)
     "Controllers:      {0} connected (XInput)" -f [OledGuard.Native]::ConnectedPads()
     "Audio peak now:   {0:N4} (counts as activity above {1})" -f [OledGuard.Native]::AudioPeak(), $AudioThreshold
@@ -444,7 +500,7 @@ try {
 } finally {
     $timer.Stop()
     Hide-Blank
-    Set-TvDesktop $false        # leave taskbar and background as they were before the guard started
+    Set-TvDesktop $false        # leave taskbar, background and icons as they were before the guard started
     $tray.Visible = $false
     $tray.Dispose()
     $mutex.ReleaseMutex()

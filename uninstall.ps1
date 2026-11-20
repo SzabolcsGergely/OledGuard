@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Stops OLED Guard, removes the logon task, and puts the taskbar and background back.
+  Stops OLED Guard, removes the logon task, and puts the taskbar, background and desktop icons back.
 #>
 $ErrorActionPreference = 'Stop'
 $script = Join-Path $PSScriptRoot 'oled-guard.ps1'
@@ -18,4 +18,4 @@ Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" |
 
 # A killed guard doesn't restore on its way out; its saved originals do it here.
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Restore
-"OLED Guard removed; taskbar and background restored."
+"OLED Guard removed; taskbar, background and icons restored."
