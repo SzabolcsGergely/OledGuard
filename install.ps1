@@ -18,6 +18,13 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
     -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew `
     -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 
+# A guard that is already running would keep its old options (the task ignores a second start),
+# so stop it first. It saved its changes, so the new one carries on from them.
+if (Get-ScheduledTask -TaskName 'OledGuard' -ErrorAction SilentlyContinue) { Stop-ScheduledTask -TaskName 'OledGuard' }
+Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" |
+    Where-Object { $_.CommandLine -like '*oled-guard.ps1*' -and $_.ProcessId -ne $PID } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
 Register-ScheduledTask -TaskName 'OledGuard' -Description 'Blanks the OLED TV when idle; hides taskbar and wallpaper while it is active.' `
     -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 'OledGuard'
