@@ -8,7 +8,9 @@
   Activity is any of:
     - keyboard / mouse input (GetLastInputInfo)
     - an XInput game controller (Xbox pads; PlayStation pads only through Steam Input / DS4Windows)
-    - sound on the default playback device (so a playing movie isn't blanked), unless -IgnoreAudio
+    - sound on the default playback device while a full-screen video or game is in front (so a
+      playing movie isn't blanked, but music behind a static desktop is); -AudioAlways counts
+      sound regardless, -IgnoreAudio never
   Only displays whose monitor id contains one of -Match are covered; the others stay untouched.
   While the TV is active the taskbar auto-hides, the desktop background is plain black and the
   desktop icons are hidden; when the TV goes away, or the guard exits, all three go back to what
@@ -28,6 +30,8 @@ param(
     [double]$IdleMinutes = 10,
     # Don't count sound as activity (then a quiet video or music will not keep the TV on either).
     [switch]$IgnoreAudio,
+    # Count sound as activity even when nothing is full screen (background music keeps the TV on).
+    [switch]$AudioAlways,
     # Peak level (0..1) on the default playback device that counts as "something is playing".
     [double]$AudioThreshold = 0.001,
     # Leave the taskbar alone (by default it auto-hides while the TV is active).
@@ -196,6 +200,18 @@ namespace OledGuard {
             int now = DesktopIconsShown();
             if (now < 0 || (now == 1) == show) return;
             SendMessage(DesktopView(), 0x0111, (IntPtr)0x7402, IntPtr.Zero);   // WM_COMMAND
+        }
+
+        // --- full screen ----------------------------------------------------------------------
+        [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
+
+        // Windows' own "is something full screen" test (what quiets notifications): a full-screen
+        // window such as a video or browser in F11 (2), a Direct3D full-screen game (3),
+        // presentation mode (4) or a full-screen Store app (7).
+        public static bool FullScreenAppRunning() {
+            int s;
+            if (SHQueryUserNotificationState(out s) != 0) return false;
+            return s == 2 || s == 3 || s == 4 || s == 7;
         }
 
         [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
@@ -391,7 +407,10 @@ if ($Status) {
     if (Test-Path $IconsMarker) { "                  (OLED Guard hid them; shown before: {0})" -f (Get-Content $IconsMarker) }
     "Input idle:       {0:N1} s" -f ([OledGuard.Native]::InputIdleMs() / 1000)
     "Controllers:      {0} connected (XInput)" -f [OledGuard.Native]::ConnectedPads()
-    "Audio peak now:   {0:N4} (counts as activity above {1})" -f [OledGuard.Native]::AudioPeak(), $AudioThreshold
+    $fs = [OledGuard.Native]::FullScreenAppRunning()
+    "Full-screen app:  {0}" -f $(if ($fs) { 'yes' } else { 'no' })
+    "Audio peak now:   {0:N4} (counts as activity above {1}: {2})" -f [OledGuard.Native]::AudioPeak(), $AudioThreshold, $(
+        if ($IgnoreAudio) { 'never, -IgnoreAudio' } elseif ($AudioAlways) { 'always, -AudioAlways' } elseif ($fs) { 'yes, full screen' } else { 'no, nothing full screen' })
     return
 }
 
@@ -485,7 +504,10 @@ $timer.Add_Tick({
         $tray.Text = if ($paused) { 'OLED Guard (paused)' } elseif ($state.TvScreens.Count) { 'OLED Guard: watching TV' } else { 'OLED Guard: TV not active' }
         if ($paused) { return }
 
-        if (-not $IgnoreAudio -and [OledGuard.Native]::AudioPeak() -gt $AudioThreshold) { $state.LastAudio = $now }
+        # Sound means "watching something" only with a full-screen video or game in front; music
+        # playing behind a static desktop or browser is exactly what should be blanked.
+        if (-not $IgnoreAudio -and ($AudioAlways -or [OledGuard.Native]::FullScreenAppRunning()) -and
+            [OledGuard.Native]::AudioPeak() -gt $AudioThreshold) { $state.LastAudio = $now }
 
         $idle = [math]::Min($inputIdle, [math]::Min(($now - $state.LastPad).TotalMilliseconds, ($now - $state.LastAudio).TotalMilliseconds))
         if ($state.Force -or $idle -ge $idleLimitMs) { Show-Blank }

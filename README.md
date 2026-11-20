@@ -26,9 +26,11 @@ Activity is any of:
 
 - keyboard / mouse input
 - an XInput controller (Xbox pads; PlayStation pads through Steam Input or DS4Windows)
-- sound on the default playback device, so a playing movie isn't blanked (a paused one is).
-  Windows doesn't let a normal app see other apps' "keep the display on" requests, so audio is
-  the stand-in. Turn it off with `-IgnoreAudio`.
+- sound on the default playback device **while a full-screen video or game is in front**, so a
+  playing movie isn't blanked (a paused one is), but music playing behind a static desktop or
+  browser is. Windows doesn't let a normal app see other apps' "keep the display on" requests, so
+  audio is the stand-in; "full screen" is Windows' own test, the one that quiets notifications.
+  `-AudioAlways` counts sound even when nothing is full screen; `-IgnoreAudio` never counts it.
 
 A tray icon offers **Blank TV now**, **Pause for 1 hour**, **Resume** and **Exit**.
 
@@ -51,6 +53,7 @@ removes the task, restores taskbar and background).
 | `-Match <ids>` | `SAM78B4` | Monitor id substrings of the TV(s). Find yours with `-Status` (the part after `DISPLAY#`). |
 | `-IdleMinutes <n>` | `10` | Idle time before blanking. |
 | `-IgnoreAudio` | off | Don't count sound as activity. |
+| `-AudioAlways` | off | Count sound as activity even when nothing is full screen (background music keeps the TV on). |
 | `-AudioThreshold <0..1>` | `0.001` | Peak level that counts as sound. |
 | `-KeepTaskbar` | off | Don't touch the taskbar. |
 | `-KeepWallpaper` | off | Don't touch the background. |
