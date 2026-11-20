@@ -67,3 +67,7 @@ removes the task, restores taskbar and background).
   change on a second monitor while the TV is active.
 - Turn the TV off with its remote, not at the wall: OLED TVs run their pixel compensation in
   standby.
+
+## License
+
+[MIT](LICENSE).
